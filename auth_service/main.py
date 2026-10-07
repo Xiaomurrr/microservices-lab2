@@ -1,12 +1,15 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from passlib.context import CryptContext
 import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 app = FastAPI()
 
-pwd_context = CryptContext(schemes = ["bcrypt"], deprecated="auto")
+security = HTTPBearer()
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 users_db = {}
 
@@ -16,7 +19,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 def create_token(data: dict):
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
 
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
@@ -29,7 +32,7 @@ class regist(BaseModel):
 @app.post("/register")
 def register(user: regist):
     if user.username in users_db:
-        raise HTTPException(status_code=400, detail="Пользоваель уже харегистрирован")
+        raise HTTPException(status_code=400, detail="Пользователь уже зарегистрирован")
 
     hashed_password = pwd_context.hash(user.password)
 
@@ -45,7 +48,23 @@ def login(user: regist):
     stored_user = users_db[user.username]
 
     if not pwd_context.verify(user.password, stored_user["password"]):
-         raise HTTPException(status_code=401, detail="Неверный логин или пароль")
+        raise HTTPException(status_code=401, detail="Неверный логин или пароль")
 
     access_token = create_token(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/me")
+def get_me(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Недействительный токен")
+
+    username = payload.get("sub")
+
+    if username is None:
+        raise HTTPException(status_code=401, detail="Недействительный токен")
+
+    return {"username": username, "message": "Успешная авторизация"}
