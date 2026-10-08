@@ -2,3 +2,4 @@ fastapi
 uvicorn
 passlib[bcrypt]
 pyjwt
+requests

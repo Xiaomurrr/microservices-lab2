@@ -4,6 +4,8 @@ from pydantic import BaseModel
 from passlib.context import CryptContext
 import jwt
 from datetime import datetime, timedelta, timezone
+import requests
+import atexit
 
 app = FastAPI()
 
@@ -68,3 +70,21 @@ def get_me(credentials: HTTPAuthorizationCredentials = Depends(security)):
         raise HTTPException(status_code=401, detail="Недействительный токен")
 
     return {"username": username, "message": "Успешная авторизация"}
+
+
+CONSUL_URL = "http://consul:8500"
+
+def register_to_consul():
+    payload = {
+        "Name": "auth-service",
+        "ID": "auth-1",
+        "Address": "auth-service",
+        "Port": 8000
+    }
+    requests.put(f"{CONSUL_URL}/v1/agent/service/register", json=payload)
+
+def deregister_from_consul():
+    requests.put(f"{CONSUL_URL}/v1/agent/service/deregister/auth-1")
+
+atexit.register(deregister_from_consul)
+register_to_consul()

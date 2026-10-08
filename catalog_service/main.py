@@ -2,6 +2,8 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 import os
+import requests
+import atexit
 
 app = FastAPI()
 
@@ -68,3 +70,20 @@ def delete_product(product_id: int):
     del products_db[product_id]
     
     return {"message": "Товар удален"}
+
+CONSUL_URL = "http://consul:8500"
+
+def register_to_consul():
+    payload = {
+        "Name": "catalog-service",
+        "ID": INSTANCE_ID,
+        "Address": "catalog-service",
+        "Port": 8000
+    }
+    requests.put(f"{CONSUL_URL}/v1/agent/service/register", json=payload)
+
+def deregister_from_consul():
+    requests.put(f"{CONSUL_URL}/v1/agent/service/deregister/{INSTANCE_ID}")
+
+atexit.register(deregister_from_consul)
+register_to_consul()
