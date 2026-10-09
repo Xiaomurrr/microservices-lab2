@@ -5,7 +5,7 @@ import os
 import requests
 import atexit
 
-app = FastAPI()
+app = FastAPI(root_path="/catalog")
 
 INSTANCE_ID = os.environ.get("INSTANCE_NAME", "catalog-1")
 

@@ -1,5 +1,6 @@
 fastapi
 uvicorn
-passlib[bcrypt]
-pyjwt
+passlib
+bcrypt==3.2.2
+PyJWT
 requests

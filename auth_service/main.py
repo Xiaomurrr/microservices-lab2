@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 import requests
 import atexit
 
-app = FastAPI()
+app = FastAPI(root_path="/auth")
 
 security = HTTPBearer()
 
