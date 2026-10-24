@@ -26,6 +26,13 @@ services:
     depends_on:
       - consul
 
+  order-service:
+    build: ./order_service
+    environment:
+      - INSTANCE_NAME=order-1
+    depends_on:
+      - consul
+
   nginx:
     image: nginx:latest
     ports:
@@ -36,3 +43,4 @@ services:
       - auth-service
       - catalog-1
       - catalog-2
+      - order-service
