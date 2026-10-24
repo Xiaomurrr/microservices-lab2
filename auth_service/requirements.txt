@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+passlib
+bcrypt==3.2.2
+PyJWT
+requests
