@@ -1,7 +1,9 @@
 import asyncio
 from contextlib import asynccontextmanager
 from typing import List, Optional
-
+import os
+import requests
+import atexit
 import httpx
 import strawberry
 from fastapi import FastAPI, Request
@@ -35,7 +37,7 @@ class Order:
     items: List[OrderItem]
 
 
-# ------------------------- DataLoader -------------------------
+#  DataLoader 
 
 def make_product_loader(client: httpx.AsyncClient) -> DataLoader:
     """
@@ -64,7 +66,7 @@ def make_product_loader(client: httpx.AsyncClient) -> DataLoader:
     return DataLoader(load_fn=load_fn)
 
 
-# ------------------------- Резолверы -------------------------
+# Резолверы
 
 @strawberry.type(description="Корневые запросы GraphQL Gateway")
 class Query:
@@ -79,7 +81,7 @@ class Query:
         client: httpx.AsyncClient = info.context["client"]
         loader: DataLoader = info.context["product_loader"]
 
-        # 1) Заказы пользователя
+        # Заказы пользователя
         try:
             resp = await client.get(ORDER_SERVICE_URL, params={"userId": user_id})
         except httpx.HTTPError:
@@ -92,20 +94,20 @@ class Query:
         if not isinstance(orders_data, list):
             return []
 
-        # 2) Уникальные productId из всех заказов
+        # Уникальные productId из всех заказов
         all_ids = sorted({
             item["productId"]
             for order in orders_data
             for item in order.get("items", [])
         })
 
-        # 3) Батч-загрузка товаров (один вызов DataLoader)
+        # Батч-загрузка товаров (один вызов DataLoader)
         product_map: dict = {}
         if all_ids:
             products = await loader.load_many(all_ids)
             product_map = dict(zip(all_ids, products))
 
-        # 4) Сборка ответа
+        # Сборка ответа
         result: List[Order] = []
         for order in orders_data:
             order_items: List[OrderItem] = []
@@ -128,11 +130,11 @@ class Query:
 schema = strawberry.Schema(query=Query)
 
 
-# ------------------------- FastAPI + lifespan -------------------------
+#FastAPI + lifespan
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Один общий AsyncClient на всё приложение (пул соединений).
+    # Один общий AsyncClient на всё приложение пул соединений
     app.state.http_client = httpx.AsyncClient(timeout=5.0)
     yield
     await app.state.http_client.aclose()
@@ -160,6 +162,32 @@ async def get_context(request: Request) -> dict:
 graphql_app = GraphQLRouter(
     schema,
     context_getter=get_context,
-    graphql_ide="apollo-sandbox",  # <--- ДОБАВИТЬ ЭТО
+    graphql_ide="apollo-sandbox",
 )
 app.include_router(graphql_app, prefix="/graphql")
+
+INSTANCE_ID = os.environ.get("INSTANCE_NAME", "graphql-gateway-1")
+CONSUL_URL = "http://consul:8500"
+
+def register_to_consul():
+    payload = {
+        "Name": "graphql-gateway",
+        "ID": INSTANCE_ID,
+        "Address": "graphql-gateway",
+        "Port": 8000
+    }
+    try:
+        requests.put(f"{CONSUL_URL}/v1/agent/service/register", json=payload)
+        print(f"Сервис {INSTANCE_ID} успешно зарегистрирован в Consul")
+    except Exception as e:
+        print(f"Ошибка регистрации в Consul: {e}")
+
+def deregister_from_consul():
+    try:
+        requests.put(f"{CONSUL_URL}/v1/agent/service/deregister/{INSTANCE_ID}")
+        print(f"Сервис {INSTANCE_ID} успешно удален из Consul")
+    except Exception as e:
+        print(f"Ошибка дерегистрации из Consul: {e}")
+
+atexit.register(deregister_from_consul)
+register_to_consul()
