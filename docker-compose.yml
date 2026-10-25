@@ -7,6 +7,21 @@ services:
     ports:
       - "8500:8500"
 
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   auth-service:
     build: ./auth_service
     depends_on:
@@ -30,14 +45,30 @@ services:
     build: ./order_service
     environment:
       - INSTANCE_NAME=order-1
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
     depends_on:
       - consul
+      - rabbitmq
+
+  payment-service:
+    build: ./payment_service
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      - rabbitmq
+
+  notification-service:
+    build: ./notification_service
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      - rabbitmq
 
   # Шлюз ходит напрямую к catalog-1 и order-service по внутренним DNS-именам.
   graphql-gateway:
     build: ./graphql_gateway
     ports:
-      - "8005:8000"        # для отладки в обход nginx
+      - "8005:8000"
     depends_on:
       - order-service
       - catalog-1
